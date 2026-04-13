@@ -23,3 +23,22 @@ def calculate_metrics(df, name):
         '夏普比率': f"{sharpe:.2f}", 
         '最大回撤': f"{max_dd:.2%}"
     }
+
+import pandas as pd
+import numpy as np
+from scipy.stats import spearmanr
+
+def calculate_rank_ic(y_true, y_pred):
+    """
+    计算 Rank IC (Spearman 相关系数)
+    y_true: 真实收益率
+    y_pred: 模型预测收益率
+    """
+    # 移除空值
+    mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    if not np.any(mask):
+        return 0.0
+    
+    # spearmanr 返回 (correlation, p-value)
+    correlation, _ = spearmanr(y_true[mask], y_pred[mask])
+    return correlation

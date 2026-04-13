@@ -1,3 +1,4 @@
+![Daily Run Status](https://github.com/xxxxzzh/DeepLearning-Quant-Framework/actions/workflows/daily_run.yml/badge.svg)
 # 阶段一：HS300-Quant-LSTM: 沪深300指数深度学习量化预测系统
 
 本项目记录了从零开始构建一个基于 LSTM（长短期记忆网络）的量化选股/趋势预测系统的全过程。通过对 A 股沪深 300 指数历史数据的特征工程与建模，最终在 2025-2026 年的样本外数据中取得了显著的预测能力。

@@ -4,6 +4,13 @@ import numpy as np
 class QuantBacktester:
     def __init__(self, df, fees=0.001, slippage=0.0005):
         self.df = df.copy()
+        if 'close' in self.df.columns:
+            # 计算 5 日均线
+            self.df['ma5'] = self.df['close'].rolling(window=5).mean()
+            # 计算偏离度 (神经网络和量化模型更喜欢的平稳特征)
+            self.df['ma5_bias'] = (self.df['close'] / self.df['ma5']) - 1
+            # 处理因为滚动计算产生的 NaN (初始几天没有均线)
+            self.df = self.df.fillna(0)
         # 确保日期格式正确
         if 'date' in self.df.columns:
             self.df['date'] = pd.to_datetime(self.df['date'])

@@ -2,18 +2,20 @@
 from engine import QuantBacktester
 from utils import calculate_metrics
 import pandas as pd
-
+from utils import calculate_rank_ic
 def run_quant_system():
     print(" 量化交易系统 1.0 正在启动...")
     
     # 2. 加载之前生成的预测结果
     try:
         results_df = pd.read_csv('final_performance_results.csv')
+        print("文件里的列名有：", results_df.columns.tolist())
         print(" 成功加载预测数据")
     except FileNotFoundError:
         print(" 错误：找不到数据文件，请确保 CSV 文件在同一目录下")
         return
 
+    ic_value = calculate_rank_ic(results_df['actual'], results_df['pred'])
     # 3. 初始化引擎
     tester = QuantBacktester(results_df)
 
@@ -31,6 +33,7 @@ def run_quant_system():
     # 6. 打印精美的对比报告
     print("\n" + "="*40)
     print("         策略表现对比报告")
+    print(f" 预测能力 (Rank IC): {ic_value:.4f}")
     print("="*40)
     for m in [metrics_a, metrics_b]:
         print(f"策略: {m['策略名称']}")
