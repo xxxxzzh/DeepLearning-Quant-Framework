@@ -28,17 +28,33 @@ import pandas as pd
 import numpy as np
 from scipy.stats import spearmanr
 
-def calculate_rank_ic(y_true, y_pred):
+def calculate_rank_ic(actual, pred):
     """
     计算 Rank IC (Spearman 相关系数)
-    y_true: 真实收益率
-    y_pred: 模型预测收益率
+    actual: 真实收益率
+    pred: 模型预测收益率
     """
     # 移除空值
-    mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    mask = ~np.isnan(actual) & ~np.isnan(pred)
     if not np.any(mask):
         return 0.0
     
     # spearmanr 返回 (correlation, p-value)
-    correlation, _ = spearmanr(y_true[mask], y_pred[mask])
+    correlation, _ = spearmanr(actual[mask], pred[mask])
     return correlation
+
+def calculate_ic_series(df, target_col='actual', pred_col='pred'):
+    """
+    按日期计算每日 Rank IC,并过滤无效值
+    """
+    # 1. 确保日期是时间格式
+    df['date'] = pd.to_datetime(df['date'])
+    
+    # 2. 按天计算相关系数
+    # 我们加一个检查：只有当当天的样本数 > 1 时才计算
+    ic_series = df.groupby('date').apply(
+        lambda x: x[target_col].corr(x[pred_col], method='spearman') if len(x) > 1 else np.nan
+    )
+    
+    # 3. 剔除计算失败的 nan 值，否则平均值也会变成 nan
+    return ic_series.dropna()

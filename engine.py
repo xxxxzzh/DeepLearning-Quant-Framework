@@ -25,9 +25,24 @@ class QuantBacktester:
         
         # 1. 信号生成
         if signal_type == 'absolute':
-            temp_df['signal'] = np.where(temp_df['pred'] > threshold, 1, 0)
+            # 基础逻辑：预测大于阈值
+            condition = (temp_df['pred'] > threshold)
+            
+            # 进阶过滤：只有当 RSI 不处于高位超买区时才买入
+            if 'rsi_14' in temp_df.columns:
+                condition = condition & (temp_df['rsi_14'] < 75)
+            
+            temp_df['signal'] = np.where(condition, 1, 0)
+
         elif signal_type == 'relative':
-            temp_df['signal'] = np.where(temp_df['pred'] > temp_df['pred'].median(), 1, 0)
+            # 基础逻辑：预测优于中位数
+            condition = (temp_df['pred'] > temp_df['pred'].median())
+            
+            # 进阶过滤：MACD 处于上升趋势（macd > signal_line）
+            if 'macd_line' in temp_df.columns and 'signal_line' in temp_df.columns:
+                 condition = condition & (temp_df['macd_line'] > temp_df['signal_line'])
+            
+            temp_df['signal'] = np.where(condition, 1, 0)
             
         # 2. 计算收益与成本
         temp_df['pos_diff'] = temp_df['signal'].diff().abs().fillna(0)
