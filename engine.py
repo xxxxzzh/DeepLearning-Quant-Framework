@@ -35,15 +35,25 @@ class QuantBacktester:
             temp_df['signal'] = np.where(condition, 1, 0)
 
         elif signal_type == 'relative':
-            # 基础逻辑：预测优于中位数
-            condition = (temp_df['pred'] > temp_df['pred'].median())
+            # 1. 基础信号：模型预测值（标准化处理，让它落在 0-1 之间）
+            # 假设 pred 是你的预测收益率
+            temp_df['model_score'] = np.where(temp_df['pred'] > temp_df['pred'].median(), 0.6, 0)
             
-            # 进阶过滤：MACD 处于上升趋势（macd > signal_line）
+            # 2. 辅助评分：MACD 趋势评分
             if 'macd_line' in temp_df.columns and 'signal_line' in temp_df.columns:
-                 condition = condition & (temp_df['macd_line'] > temp_df['signal_line'])
-            
-            temp_df['signal'] = np.where(condition, 1, 0)
-            
+                # 金叉给 0.4 分，死叉给 0 分
+                temp_df['trend_score'] = np.where(temp_df['macd_line'] > temp_df['signal_line'], 0.4, 0)
+            else:
+                temp_df['trend_score'] = 0
+                
+            # 3. 最终信号 = 模型分(60%) + 趋势分(40%)
+            # 这样即便模型看错，如果有趋势保护，仓位也会被修正
+            temp_df['signal'] = temp_df['model_score'] + temp_df['trend_score']
+            # 4. RSI 极端行情熔断（风控开关）
+            # 如果 RSI > 80，说明极度超买，即便评分再高也强行把仓位降到 0.2（试探性仓位）
+            if 'rsi_14' in temp_df.columns:
+                temp_df.loc[temp_df['rsi_14'] > 80, 'signal'] = 0.2
+                
         # 2. 计算收益与成本
         temp_df['pos_diff'] = temp_df['signal'].diff().abs().fillna(0)
         temp_df['strat_ret_raw'] = temp_df['signal'].shift(1) * temp_df['actual']
