@@ -33,27 +33,35 @@ class QuantBacktester:
                 condition = condition & (temp_df['rsi_14'] < 75)
             
             temp_df['signal'] = np.where(condition, 1, 0)
-
+        # 在 run_backtest 函数中修改 relative 分支
         elif signal_type == 'relative':
-            # 1. 基础信号：模型预测值（标准化处理，让它落在 0-1 之间）
-            # 假设 pred 是你的预测收益率
-            temp_df['model_score'] = np.where(temp_df['pred'] > temp_df['pred'].median(), 0.6, 0)
-            
-            # 2. 辅助评分：MACD 趋势评分
-            if 'macd_line' in temp_df.columns and 'signal_line' in temp_df.columns:
-                # 金叉给 0.4 分，死叉给 0 分
+            # 1. 择时信号：不再用 median 排名，而是看预测值是否大于 0
+            # 0.6 是基础分，代表模型看好
+            temp_df['model_score'] = np.where(temp_df['pred'] > 0, 0.6, 0)
+    
+            # 2. 趋势评分：MACD 金叉
+            if 'macd_line' in temp_df.columns:
                 temp_df['trend_score'] = np.where(temp_df['macd_line'] > temp_df['signal_line'], 0.4, 0)
             else:
                 temp_df['trend_score'] = 0
-                
-            # 3. 最终信号 = 模型分(60%) + 趋势分(40%)
-            # 这样即便模型看错，如果有趋势保护，仓位也会被修正
+        
             temp_df['signal'] = temp_df['model_score'] + temp_df['trend_score']
-            # 4. RSI 极端行情熔断（风控开关）
-            # 如果 RSI > 80，说明极度超买，即便评分再高也强行把仓位降到 0.2（试探性仓位）
+
+            # 3. 修复 RSI 阈值
+            # 关键：检查你的 RSI 是否被 MinMaxScaler 缩放到了 0-1
+            rsi_max = temp_df['rsi_14'].max()
+            threshold = 0.8 if rsi_max <= 1.0 else 80
+    
             if 'rsi_14' in temp_df.columns:
-                temp_df.loc[temp_df['rsi_14'] > 80, 'signal'] = 0.2
-                
+                # 只要 RSI 超过阈值，强行降仓到 0.2
+                temp_df.loc[temp_df['rsi_14'] > threshold, 'signal'] = 0.2
+
+            # --- 调试代码开始 ---
+            triggered_count = (temp_df['rsi_14'] > 0.8).sum()
+            actual_signals = temp_df['signal'].unique()
+            print(f"DEBUG: RSI>0.8的天数: {triggered_count} | 现在的信号种类: {actual_signals}")
+            # --- 调试代码结束 ---
+
         # 2. 计算收益与成本
         temp_df['pos_diff'] = temp_df['signal'].diff().abs().fillna(0)
         temp_df['strat_ret_raw'] = temp_df['signal'].shift(1) * temp_df['actual']

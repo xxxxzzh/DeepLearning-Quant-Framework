@@ -8,7 +8,15 @@ def run_quant_system():
     
     # 2. 加载之前生成的预测结果
     try:
-        results_df = pd.read_csv('final_performance_results.csv')
+        results_df = pd.read_csv('enhanced_performance_results.csv')
+        results_df = results_df.rename(columns={'return': 'actual'}) 
+        # 在加载完 results_df 后，只看 2023 年以后的表现
+        results_df['date'] = pd.to_datetime(results_df['date'])
+        # 截取 2023 年以后的数据
+        results_df = results_df[results_df['date'] >= '2023-01-01'].reset_index(drop=True)
+        print(f"--- 开启近3年实战回测，样本量: {len(results_df)} 天 ---")
+        tester = QuantBacktester(results_df)
+        print(" 成功将 'return' 重命名为 'actual'")
         print("文件里的列名有：", results_df.columns.tolist())
         print(" 成功加载预测数据")
     except FileNotFoundError:
@@ -20,7 +28,8 @@ def run_quant_system():
     print(f"不同日期数量: {len(date_counts)}")
     print(f"每组日期平均样本数: {date_counts.mean():.2f}")
     print("前 5 天的数据量样本:\n", date_counts.head())
-    
+    print(f"RSI 列的空值数量: {results_df['rsi_14'].isna().sum()}")
+
     ic_value = calculate_rank_ic(results_df['actual'], results_df['pred'])
     # 3. 初始化引擎
     tester = QuantBacktester(results_df)
