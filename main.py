@@ -54,6 +54,8 @@ def run_quant_system():
     metrics_b = calculate_metrics(res_rel, "激进型 (Relative)")
 
     # 6. 打印精美的对比报告
+    total_cost = res_rel['trade_cost'].sum()
+    print(f" 激进型策略总交易成本: {total_cost:.2%}")
     print("\n" + "="*40)
     print("         策略表现对比报告")
     print(f" 预测能力 (Rank IC): {ic_value:.4f}")
