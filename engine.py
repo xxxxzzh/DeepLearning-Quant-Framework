@@ -35,55 +35,46 @@ class QuantBacktester:
             temp_df['signal'] = np.where(condition, 1, 0)
         # 在 run_backtest 函数中修改 relative 分支
         elif signal_type == 'relative':
-            # --- 1. 先初始化一个全是 0 的 signal 列 (解决报错的关键) ---
-            temp_df['signal'] = 0.0
+            # --- 1. 因子分标准化 (Normalization) ---
+            # LSTM 预测分：假设预测 0.5% 为满分 1.0
+            score_lstm = (temp_df['pred'] / 0.005).clip(-1, 1)
     
-            # --- 2. 计算理想状态的分数 ---
-            confidence_scale = 100.0
-            raw_pred_score = (temp_df['pred'] * confidence_scale).clip(0, 1)
+            # 趋势分 (MACD)：金叉为 1，死叉为 -1
+            score_macd = np.where(temp_df['macd_line'] > temp_df['signal_line'], 1.0, -1.0)
     
-            # 确保列名正确，根据你的数据检查是否叫 'macd_line'
-            trend_score = np.where(temp_df['macd_line'] > temp_df['signal_line'], 0.4, 0)
-            ideal_signal = (raw_pred_score + trend_score).clip(0, 1)
+            # 均值回归分 (RSI)：将 0~100 映射到 1 到 -1
+            # 50 是中点 (0分)，80 以上是负分，20 以下是正分
+            score_rsi = (50 - temp_df['rsi_14']) / 30 
+            score_rsi = score_rsi.clip(-1, 1)
 
-            # --- 3. 缓冲区逻辑 ---
-            buy_threshold = 0.005
-            sell_threshold = -0.002
-            
-            # 为了保证效率，我们先生成一个临时的 shift 序列
-            # 注意：在回测引擎初次启动时，第一天的 prev_signal 默认为 0
+            # --- 2. 权重分配 (按你刚才的想法) ---
+            # 给 LSTM 较高权重 (比如 0.6)，给趋势和 RSI 各 0.2
+            w_lstm, w_macd, w_rsi = 0.6, 0.2, 0.2
     
-            # 我们用一个循环或者更简单的方式处理：
-            # 这里我们采用一种“向量化”的折中写法：
+            temp_df['total_score'] = (
+                score_lstm * w_lstm + 
+                score_macd * w_macd + 
+                score_rsi * w_rsi
+            )
+
+            # --- 3. 加权后的缓冲区逻辑 (Hysteresis) ---
+            # 只有总分超过 0.5 才买入，低于 -0.2 就清仓
+            buy_threshold = 0.5
+            sell_threshold = -0.2
+    
+            temp_df['signal'] = 0.0
             for i in range(1, len(temp_df)):
                 prev_sig = temp_df.loc[temp_df.index[i-1], 'signal']
-                current_pred = temp_df.loc[temp_df.index[i], 'pred']
+                current_score = temp_df.loc[temp_df.index[i], 'total_score']
         
-                if current_pred > buy_threshold:
-                    # 买入时固定仓位，不要每天微调 (比如固定 0.8)
-                    # 这样只要不卖出，中间就不产生任何调仓手续费
-                    temp_df.loc[temp_df.index[i], 'signal'] = 0.8 
-                elif current_pred < sell_threshold:
+                if current_score > buy_threshold:
+                    temp_df.loc[temp_df.index[i], 'signal'] = 0.8 # 固定 0.8 仓位
+                elif current_score < sell_threshold:
                     temp_df.loc[temp_df.index[i], 'signal'] = 0.0
                 else:
-                    # 关键：在这里，保持和昨天一模一样！
                     temp_df.loc[temp_df.index[i], 'signal'] = prev_sig
 
-            # 3. RSI 风险熔断 (依然保留)
-            rsi_max = temp_df['rsi_14'].max()
-            threshold = 0.8 if rsi_max <= 1.0 else 80
-            temp_df.loc[temp_df['rsi_14'] > threshold, 'signal'] = 0.0
-
-       
-            # 4. 【新增】信号防抖逻辑（Throttling）：省去不必要的手续费
-            # 只有当新信号和旧信号差别大于 5% 时才动，否则保持原样
-            temp_df['prev_signal'] = temp_df['signal'].shift(1).fillna(0)
-            temp_df['signal'] = np.where(
-                abs(temp_df['signal'] - temp_df['prev_signal']) < 0.1, 
-                temp_df['prev_signal'], 
-                temp_df['signal']
-            )
-    
+           
             # --- 调试代码开始 ---
             triggered_count = (temp_df['rsi_14'] > 0.8).sum()
             actual_signals = temp_df['signal'].unique()
