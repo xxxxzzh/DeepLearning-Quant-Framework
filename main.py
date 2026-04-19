@@ -1,43 +1,71 @@
-# 1. 导入你刚刚写的两个模块
+# 1. 导入
+import os
+import sys
+
+# 1. 允许重复库运行
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+# 2. 【核心修复】强制把 torch 的 lib 目录加入 Windows 搜索路径
+import torch
+torch_lib_path = os.path.join(os.path.dirname(torch.__file__), "lib")
+if os.path.exists(torch_lib_path):
+    os.add_dll_directory(torch_lib_path)
+
+# 3. 现在的导入顺序
 from engine import QuantBacktester
+from model import TransformerAlpha
 from utils import calculate_metrics
 import pandas as pd
 from utils import calculate_rank_ic,calculate_ic_series
 def run_quant_system():
-    print(" 量化交易系统 1.0 正在启动...")
+    print(" 量化交易系统 1.0 (Transformer 增强版) 正在启动...")
     
-    # 2. 加载之前生成的预测结果
+    # --- 第一步：加载原始数据 (含特征，不含预测) ---
+    # 假设你的原始特征数据在 data.csv 里，或者你从结果文件里读取特征
     try:
-        results_df = pd.read_csv('enhanced_performance_results.csv')
-        results_df = results_df.rename(columns={'return': 'actual'}) 
-        # 在加载完 results_df 后，只看 2023 年以后的表现
-        results_df['date'] = pd.to_datetime(results_df['date'])
+        raw_df = pd.read_csv('enhanced_performance_results.csv') 
+        raw_df['date'] = pd.to_datetime(raw_df['date'])
         # 截取 2023 年以后的数据
-        results_df = results_df[results_df['date'] >= '2023-01-01'].reset_index(drop=True)
-        print(f"--- 开启近3年实战回测，样本量: {len(results_df)} 天 ---")
-        tester = QuantBacktester(results_df)
-        print(" 成功将 'return' 重命名为 'actual'")
-        print("文件里的列名有：", results_df.columns.tolist())
-        print(" 成功加载预测数据")
+        results_df = raw_df[raw_df['date'] >= '2023-01-01'].copy().reset_index(drop=True)
     except FileNotFoundError:
-        print(" 错误：找不到数据文件，请确保 CSV 文件在同一目录下")
+        print(" 错误：找不到数据文件")
         return
-    date_counts = results_df['date'].value_counts()
-    print("\n--- 数据分布检查 ---")
-    print(f"总行数: {len(results_df)}")
-    print(f"不同日期数量: {len(date_counts)}")
-    print(f"每组日期平均样本数: {date_counts.mean():.2f}")
-    print("前 5 天的数据量样本:\n", date_counts.head())
-    print(f"RSI 列的空值数量: {results_df['rsi_14'].isna().sum()}")
 
-    ic_value = calculate_rank_ic(results_df['actual'], results_df['pred'])
-    # 3. 初始化引擎
+    # --- 第二步：【新增】使用 Transformer 生成预测 (这一步是 Month 4 的核心) ---
+    print("--- 正在调用 Transformer 模型进行信号推理 ---")
+    
+    # 1. 实例化模型 (假设特征维度是 6)
+    feature_dim = 6 
+    model = TransformerAlpha(feature_dim=feature_dim)
+    
+    # 2. 加载你之前练好的权重 (如果你已经训练好了)
+    # model.load_state_dict(torch.load('transformer_best.pt'))
+    # model.eval() 
+    
+    # 3. 这里为了演示，我们假设 Transformer 产生的预测值更新了 results_df['pred']
+    # 如果你现在只想先跑通流程，可以先保留 CSV 里的 pred，
+    # 等你把模型训练代码写好后再替换它。
+    
+    # --- 第三步：数据检查 (保持你原来的代码) ---
+    print(f"--- 开启近3年实战回测，样本量: {len(results_df)} 天 ---")
+    results_df = results_df.rename(columns={'return': 'actual'}) 
+    
+    # --- 第四步：启动引擎 (使用重构后的 QuantBacktester) ---
     tester = QuantBacktester(results_df)
 
+    # 运行策略
+    # 注意：现在的 relative 逻辑会自动去 engine 里找 StrategyManager 进行加权评分
+    res_abs = tester.run_backtest(signal_type='absolute', threshold=0)
+    res_rel = tester.run_backtest(signal_type='relative')
+
+    # --- 第五步：指标计算与打印 ---
+ 
     #  计算每日 IC 序列
     ic_series = calculate_ic_series(results_df)
 
     # 计算核心指标
+    from utils import calculate_rank_ic
+    ic_value = calculate_rank_ic(results_df['actual'], results_df['pred'])
     mean_ic = ic_series.mean()
     std_ic = ic_series.std()
     icir = mean_ic / std_ic if std_ic != 0 else 0

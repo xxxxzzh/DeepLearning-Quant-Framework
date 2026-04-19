@@ -1,6 +1,25 @@
 import pandas as pd
 import numpy as np
 
+import numpy as np
+
+class StrategyManager:
+    """策略决策中心：负责加权评分与信号生成"""
+    def __init__(self, weights={'lstm': 0.6, 'macd': 0.2, 'rsi': 0.2}):
+        self.weights = weights
+
+    def get_total_score(self, pred, macd_diff, rsi_val):
+        # 标准化评分
+        s_lstm = (pred / 0.005).clip(-1, 1)
+        s_macd = 1.0 if macd_diff > 0 else -1.0
+        s_rsi = (50 - rsi_val) / 30
+        return (s_lstm * self.weights['lstm'] + 
+                s_macd * self.weights['macd'] + 
+                s_rsi * self.weights['rsi']).clip(-1, 1)
+
+# 下面接着你原有的 QuantTester 类...
+# 在 QuantTester 的 run_backtest 逻辑里调用 StrategyManager
+
 class QuantBacktester:
     def __init__(self, df, fees=0.001, slippage=0.0005):
         self.df = df.copy()
