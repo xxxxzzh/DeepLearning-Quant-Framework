@@ -20,21 +20,70 @@ class StrategyManager:
 # 下面接着你原有的 QuantTester 类...
 # 在 QuantTester 的 run_backtest 逻辑里调用 StrategyManager
 
+import pandas as pd
+import numpy as np
+import pandas_ta as ta
+
 class QuantBacktester:
     def __init__(self, df, fees=0.001, slippage=0.0005):
         self.df = df.copy()
+        
+        # 1. 强制所有基础列名小写
+        self.df.columns = [c.lower() for c in self.df.columns]
+        
         if 'close' in self.df.columns:
-            # 计算 5 日均线
+            # 2. 生成你原创的 MA5 偏离度
             self.df['ma5'] = self.df['close'].rolling(window=5).mean()
-            # 计算偏离度 (神经网络和量化模型更喜欢的平稳特征)
             self.df['ma5_bias'] = (self.df['close'] / self.df['ma5']) - 1
-            # 处理因为滚动计算产生的 NaN (初始几天没有均线)
+            
+            # 3. 生成 TA-Lib 指标 (统一转换为小写以防万一)
+            self.df.ta.macd(append=True)
+            self.df.ta.rsi(length=14, append=True)
+            self.df.ta.atr(length=14, append=True)
+            
+            # 4. 生成成交量变化率
+            if 'volume' in self.df.columns:
+                self.df['vol_change'] = self.df['volume'].pct_change()
+            else:
+                self.df['vol_change'] = 0.0
+            
+            # 强制把 pandas_ta 生成的新列名也转成小写
+            self.df.columns = [c.lower() for c in self.df.columns]
+            
+            self.df = self.df.loc[:, ~self.df.columns.duplicated()]
+            # 处理所有 NaN
             self.df = self.df.fillna(0)
-        # 确保日期格式正确
+            
         if 'date' in self.df.columns:
             self.df['date'] = pd.to_datetime(self.df['date'])
+            
         self.cost = fees + slippage
+
+    def get_feature_matrix(self):
+        """
+        获取 8 维特征矩阵，带自适应容错
+        """
+        feature_cols = [
+            'close', 'volume', 'ma5_bias', 'rsi_14', 
+            'macd_12_26_9', 'macdh_12_26_9', 'atr_14', 'vol_change'
+        ]
         
+        # 再次确认列都在（防止大小写差异）
+        existing_cols = []
+        for col in feature_cols:
+            if col in self.df.columns:
+                existing_cols.append(col)
+            else:
+                # 如果没找到，尝试在 df.columns 里找一个名字包含该因子的列作为替补
+                fallback = [c for c in self.df.columns if col.split('_')[0] in c]
+                if fallback:
+                    existing_cols.append(fallback[0])
+                else:
+                    print(f"致命警告：彻底找不到特征 {col}")
+        
+        return self.df[existing_cols].values
+
+    
     def run_backtest(self, signal_type='absolute', threshold=0):
         """
         核心回测函数

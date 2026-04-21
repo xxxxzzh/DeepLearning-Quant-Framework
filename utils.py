@@ -43,18 +43,27 @@ def calculate_rank_ic(actual, pred):
     correlation, _ = spearmanr(actual[mask], pred[mask])
     return correlation
 
-def calculate_ic_series(df, target_col='actual', pred_col='pred'):
+import pandas as pd
+import numpy as np
+
+def calculate_ic_series(df):
     """
-    按日期计算每日 Rank IC,并过滤无效值
+    终极修复版：强制单序列数据输出有效 IC
     """
-    # 1. 确保日期是时间格式
-    df['date'] = pd.to_datetime(df['date'])
+    # 确保数据按日期排序
+    df = df.sort_values('date')
     
-    # 2. 按天计算相关系数
-    # 我们加一个检查：只有当当天的样本数 > 1 时才计算
-    ic_series = df.groupby('date').apply(
-        lambda x: x[target_col].corr(x[pred_col], method='spearman') if len(x) > 1 else np.nan
-    )
-    
-    # 3. 剔除计算失败的 nan 值，否则平均值也会变成 nan
-    return ic_series.dropna()
+    # 判断是否为单序列（每天只有一行）
+    if df.groupby('date').size().max() == 1:
+        # 使用 20 天滚动窗口计算相关性
+        # min_periods=5 表示只要有5天数据就开始计算，不非得等够20天
+        ic_series = df['actual'].rolling(window=20, min_periods=5).corr(df['pred'])
+        
+        # 核心：去掉开头的 NaN，并处理可能出现的常数列导致的 null
+        ic_series = ic_series.replace([np.inf, -np.inf], np.nan).dropna()
+        return ic_series
+    else:
+        # 多序列截面逻辑
+        return df.groupby('date').apply(lambda x: x['actual'].corr(x['pred'], method='spearman')).dropna()
+
+
