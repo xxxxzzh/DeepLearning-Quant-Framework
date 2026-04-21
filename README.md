@@ -158,6 +158,7 @@
                                  [Strategy Manager] (engine.py) <- [Multi-Factor Weights]
                                            |
                                  [Quant Backtester] (engine.py) -> [Visual Reports]
+```
 
 ## 阶段七：V1.0 稳定版发布与防止数据穿越 (Phase 7: V1.0 Stable Release)
 
