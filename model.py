@@ -1,49 +1,64 @@
 import torch
 import torch.nn as nn
 
-class TransformerAlpha(nn.Module):
-    def __init__(self, feature_dim, hidden_dim=128, n_heads=4, num_layers=2):
-        super(TransformerAlpha, self).__init__()
-        self.embedding = nn.Linear(feature_dim, hidden_dim)
+class CrossSectionalTransformer(nn.Module):
+    def __init__(self, feature_dim=5, d_model=64, nhead=4, num_layers=2, dropout=0.1):
+        super(CrossSectionalTransformer, self).__init__()
         
+        # 1. 神经元升维：把 5 维特征映射到高维脑区
+        self.input_projection = nn.Linear(feature_dim, d_model)
+        
+        # 2. 截面注意力机制 (Cross-Sectional Attention)
+        # 这里是整个 V2.0 的灵魂：让同时期的股票互相“观察”
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=hidden_dim, nhead=n_heads, batch_first=True, dropout=0.1
+            d_model=d_model, 
+            nhead=nhead, 
+            dropout=dropout,
+            batch_first=True  # 极其关键！声明输入形状为 [Batch, 股票数, 特征]
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         
-        self.fc = nn.Sequential(
-            nn.Linear(hidden_dim, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1)
-        )
+        # 3. 最终打分头：给每一只股票输出一个相对强弱分数 (Alpha Score)
+        self.output_layer = nn.Linear(d_model, 1)
 
     def forward(self, x):
-        x = self.embedding(x)
-        x = self.transformer(x)
-        return self.fc(x[:, -1, :]) # 只取序列最后一天
+        """
+        x 形状: [batch_size=1, num_stocks, feature_dim]
+        """
+        # 第一步：特征升维
+        out = self.input_projection(x)  # -> [1, num_stocks, 64]
+        
+        # 第二步：多头注意力特征交叉 (股票间的心电感应)
+        out = self.transformer_encoder(out)  # -> [1, num_stocks, 64]
+        
+        # 第三步：降维输出单一得分
+        out = self.output_layer(out)  # -> [1, num_stocks, 1]
+        
+        # 压平最后一个维度，使得输出形状完美对应目标 Y: [1, num_stocks]
+        return out.squeeze(-1)
+
+# =========================================
+# 本地防呆测试模块
+# =========================================
+if __name__ == "__main__":
+    # 模拟你刚才输出的 2020-02-14 的那一天的数据形状
+    batch_size = 1
+    num_stocks = 4   # 停牌了1只，剩4只
+    feature_dim = 5  # 5大核心指标
     
-
-import torch
-from torch.utils.data import Dataset
-
-class StockDataset(Dataset):
-    """
-    量化交易标准数据集封装类
-    负责将 Numpy 数组转化为 PyTorch 认识的 Tensor，并喂给 Transformer
-    """
-    def __init__(self, features, targets):
-        # 将传入的 8 维特征和目标收益率转换为 PyTorch 的张量格式
-        self.features = torch.tensor(features, dtype=torch.float32)
-        self.targets = torch.tensor(targets, dtype=torch.float32)
-
-    def __len__(self):
-        # 返回数据集的总行数
-        return len(self.features)
-
-    def __getitem__(self, idx):
-        # Transformer 模型通常需要三维输入：(Batch_Size, Sequence_Length, Feature_Dim)
-        # 你的特征是 [8]，我们用 unsqueeze(0) 把它变成 [1, 8]，代表序列长度为 1
-        x = self.features[idx].unsqueeze(0)
-        y = self.targets[idx]
-        return x, y
+    # 随机生成一个假数据假装是 DataLoader 送进来的
+    dummy_x = torch.randn(batch_size, num_stocks, feature_dim)
+    
+    print(f" 模型输入形状 (X): {dummy_x.shape}")
+    
+    # 初始化大脑
+    model = CrossSectionalTransformer(feature_dim=5)
+    
+    # 前向传播
+    predictions = model(dummy_x)
+    
+    print(f" 模型输出形状 (Predictions): {predictions.shape}")
+    print("-------------------------------------------------")
+    print("模型输出的截面打分示例:", predictions.detach().numpy())
+    print("大功告成！输出形状完美对齐目标 Y！")
     

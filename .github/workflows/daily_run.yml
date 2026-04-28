@@ -1,10 +1,16 @@
 name: Daily Quant Report
 
 on:
-  push:
-    branches: [ main ]  # 当你提交代码时运行
-  schedule:
-    - cron: '0 0 * * *' # 每天凌晨自动运行一次
+  # 【省流开关 1】暂时注释掉 push 触发。防止每次改 README 或修小 Bug 都浪费十几分钟算力
+  # push:
+  #   branches: [ main ]  
+  
+  # 【省流开关 2】暂时注释掉定时任务。等策略彻底要实盘跑了再打开
+  # schedule:
+  #   - cron: '0 0 * * *' 
+  
+  # 【新增核心开关】允许在 GitHub 网页端手动点击按钮运行！
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -13,10 +19,11 @@ jobs:
     - name: 检出代码
       uses: actions/checkout@v3
 
-    - name: 设置 Python 环境
+    - name: 设置 Python 环境与依赖缓存 (极大省时省额度)
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
+        cache: 'pip' # 【核心科技】自动缓存 PyTorch 等大包，下次运行直接跳过下载！
 
     - name: 安装量化依赖
       run: |
@@ -24,5 +31,4 @@ jobs:
         pip install -r requirements.txt
 
     - name: 运行量化引擎并输出报告
-    # 这一步就是代替你手动输入 python main.py
       run: python main.py
